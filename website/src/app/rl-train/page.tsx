@@ -62,10 +62,50 @@ export default function RLTrainPage() {
   const [epsilonDecay, setEpsilonDecay] = useState<number>(0.995);
   const [failRewardThreshold, setFailRewardThreshold] = useState<number>(0.0);
 
-  // Reward rule builder states
-  const [rewardRules, setRewardRules] = useState<RewardRule[]>([
-    { id: "1", type: "step_penalty", value: -0.01 },
-  ]);
+  // Reward rules JSON config state
+  const [rewardRulesJson, setRewardRulesJson] = useState<string>(
+    JSON.stringify(
+      [
+        {
+          "type": "step_penalty",
+          "value": -0.01
+        }
+      ],
+      null,
+      2
+    )
+  );
+
+  const handleDownloadSampleJson = () => {
+    const sample = [
+      {
+        "type": "step_penalty",
+        "value": -0.01
+      },
+      {
+        "type": "state_threshold",
+        "index": 2,
+        "op": ">",
+        "value": 0.1,
+        "reward": -1
+      },
+      {
+        "type": "terminal_bonus",
+        "reward": 50
+      },
+      {
+        "type": "terminal_penalty",
+        "reward": -50
+      }
+    ];
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sample, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", "rewards.json");
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
 
   // Operational states
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -98,56 +138,6 @@ export default function RLTrainPage() {
     }
   }, [logs]);
 
-  // Add a new reward rule to visual builder
-  const addRewardRule = (type: string) => {
-    const newRule: RewardRule = {
-      id: Math.random().toString(36).substr(2, 9),
-      type,
-    };
-    if (type === "step_penalty") newRule.value = -0.01;
-    else if (type === "state_threshold") {
-      newRule.index = 0;
-      newRule.op = ">";
-      newRule.value = 0.0;
-      newRule.reward = 1.0;
-    } else if (type === "action_bonus") {
-      newRule.action = 0;
-      newRule.reward = 1.0;
-    } else if (type === "terminal_bonus" || type === "terminal_penalty") {
-      newRule.reward = 10.0;
-    } else if (type === "override_reward") {
-      newRule.value = 1.0;
-    }
-    setRewardRules([...rewardRules, newRule]);
-  };
-
-  const removeRewardRule = (id: string) => {
-    setRewardRules(rewardRules.filter((r) => r.id !== id));
-  };
-
-  const updateRuleField = (id: string, field: keyof RewardRule, val: any) => {
-    setRewardRules(
-      rewardRules.map((rule) => {
-        if (rule.id === id) {
-          return { ...rule, [field]: val };
-        }
-        return rule;
-      }),
-    );
-  };
-
-  // Helpers to manage rule types via checkboxes
-  const ruleExists = (type: string) => rewardRules.some((r) => r.type === type);
-
-  const removeRewardRulesByType = (type: string) => {
-    setRewardRules(rewardRules.filter((r) => r.type !== type));
-  };
-
-  const toggleRuleType = (type: string, checked: boolean) => {
-    if (checked) addRewardRule(type);
-    else removeRewardRulesByType(type);
-  };
-
   // Run Training
   const handleStartTraining = async () => {
     setStatus("training");
@@ -171,28 +161,16 @@ export default function RLTrainPage() {
         );
       }
 
-      // Convert visual rules to backend payload format
-      const formattedRules = rewardRules.map((r) => {
-        const payload: any = { type: r.type };
-        if (r.type === "step_penalty") payload.value = Number(r.value);
-        else if (r.type === "state_threshold") {
-          payload.index = Number(r.index);
-          payload.op = r.op;
-          payload.value = Number(r.value);
-          payload.reward = Number(r.reward);
-        } else if (r.type === "action_bonus") {
-          payload.action = Number(r.action);
-          payload.reward = Number(r.reward);
-        } else if (
-          r.type === "terminal_bonus" ||
-          r.type === "terminal_penalty"
-        ) {
-          payload.reward = Number(r.reward);
-        } else if (r.type === "override_reward") {
-          payload.value = Number(r.value);
+      // Parse reward rules JSON
+      let parsedRules: any[] = [];
+      try {
+        parsedRules = JSON.parse(rewardRulesJson);
+        if (!Array.isArray(parsedRules)) {
+          throw new Error("Reward rules must be a JSON array.");
         }
-        return payload;
-      });
+      } catch (err: any) {
+        throw new Error("Invalid reward rules JSON: " + err.message);
+      }
 
       const payload = {
         env: env === "custom" ? customEnv : env,
@@ -212,11 +190,11 @@ export default function RLTrainPage() {
         hidden_layers: parsedLayers,
         activation,
         seed: 42,
-        reward_rules: formattedRules,
+        reward_rules: parsedRules,
         fail_reward_threshold: failRewardThreshold,
       };
 
-      const response = await fetch("http://localhost:8000/rl/train", {
+      const response = await fetch((process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000") + "/rl/train", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -246,7 +224,7 @@ export default function RLTrainPage() {
       eventSourceRef.current.close();
     }
 
-    const sse = new EventSource(`http://localhost:8000/rl/progress/${taskId}`);
+    const sse = new EventSource((process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000") + "/rl/progress/" + taskId);
     eventSourceRef.current = sse;
 
     sse.onmessage = (event) => {
@@ -285,7 +263,7 @@ export default function RLTrainPage() {
   const handleCancelTraining = async () => {
     if (!taskId) return;
     try {
-      await fetch(`http://localhost:8000/rl/cancel/${taskId}`, {
+      await fetch((process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000") + "/rl/cancel/" + taskId, {
         method: "POST",
       });
       setStatus("cancelled");
@@ -560,311 +538,33 @@ export default function RLTrainPage() {
               </div>
             </div>
 
-            {/* Visual Reward Rule Builder */}
+            {/* JSON Reward Rules Configuration */}
             <div className="glass-panel p-md rounded-xl space-y-4 border border-white/10 bg-surface-container/60 shadow-xl">
               <div className="flex justify-between items-center">
                 <h2 className="font-heading-md text-md font-semibold text-cyan-300 flex items-center gap-2">
-                  Visual Reward Builder
+                  Reward Configuration (JSON)
                 </h2>
+                <button
+                  onClick={handleDownloadSampleJson}
+                  className="px-3 py-1 bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/30 rounded-lg text-xs flex items-center gap-1.5 transition-all font-medium"
+                >
+                  <MdDownload className="text-sm" /> Sample JSON
+                </button>
               </div>
               <div className="flex flex-col gap-2">
-                <div className="text-xs text-on-surface-variant">
-                  Add rule types (visible):
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  Define custom reward shaping rules as a JSON array. These rules are applied step-by-step during training to guide agent learning.
+                </p>
+                <div className="relative">
+                  <textarea
+                    value={rewardRulesJson}
+                    onChange={(e) => setRewardRulesJson(e.target.value)}
+                    disabled={status === "training"}
+                    rows={10}
+                    className="w-full font-mono text-xs  border border-outline-variant text-zinc-300 rounded-lg p-3 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/25 transition-all resize-none shadow-inner"
+                    placeholder="Enter reward rules JSON list..."
+                  />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={ruleExists("step_penalty")}
-                      onChange={(e) =>
-                        toggleRuleType("step_penalty", e.target.checked)
-                      }
-                      disabled={status === "training"}
-                      className="w-4 h-4 appearance-none checked:appearance-auto bg-white rounded"
-                    />
-                    Step Penalty
-                  </label>
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={ruleExists("state_threshold")}
-                      onChange={(e) =>
-                        toggleRuleType("state_threshold", e.target.checked)
-                      }
-                      disabled={status === "training"}
-                      className="w-4 h-4 appearance-none checked:appearance-auto bg-white rounded"
-                    />
-                    State Threshold Rule
-                  </label>
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={ruleExists("action_bonus")}
-                      onChange={(e) =>
-                        toggleRuleType("action_bonus", e.target.checked)
-                      }
-                      disabled={status === "training"}
-                      className="w-4 h-4 appearance-none checked:appearance-auto bg-white rounded"
-                    />
-                    Action Bonus
-                  </label>
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={ruleExists("terminal_bonus")}
-                      onChange={(e) =>
-                        toggleRuleType("terminal_bonus", e.target.checked)
-                      }
-                      disabled={status === "training"}
-                      className="w-4 h-4 appearance-none checked:appearance-auto bg-white rounded"
-                    />
-                    Terminal Success Bonus
-                  </label>
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={ruleExists("terminal_penalty")}
-                      onChange={(e) =>
-                        toggleRuleType("terminal_penalty", e.target.checked)
-                      }
-                      disabled={status === "training"}
-                      className="w-4 h-4 appearance-none checked:appearance-auto bg-white rounded"
-                    />
-                    Terminal Fail Penalty
-                  </label>
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={ruleExists("override_reward")}
-                      onChange={(e) =>
-                        toggleRuleType("override_reward", e.target.checked)
-                      }
-                      disabled={status === "training"}
-                      className="w-4 h-4 appearance-none checked:appearance-auto bg-white rounded"
-                    />
-                    Override Reward
-                  </label>
-                </div>
-              </div>
-
-              {/* Rules List */}
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {rewardRules.length === 0 ? (
-                  <p className="text-xs text-on-surface-variant italic py-4 text-center">
-                    No custom reward rules. Default environment reward is used.
-                  </p>
-                ) : (
-                  rewardRules.map((rule) => (
-                    <div
-                      key={rule.id}
-                      className="p-md bg-surface-container border border-outline-variant rounded-xl flex items-start justify-between gap-2"
-                    >
-                      <div className="flex-1 space-y-1.5">
-                        <div className="text-xs font-bold text-cyan-400 capitalize">
-                          {rule.type.replace("_", " ")}
-                        </div>
-
-                        {/* Dynamic fields based on rule type */}
-                        {rule.type === "step_penalty" && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-on-surface-variant">
-                              Penalty Value:
-                            </span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={rule.value ?? -0.01}
-                              onChange={(e) =>
-                                updateRuleField(
-                                  rule.id,
-                                  "value",
-                                  Number(e.target.value),
-                                )
-                              }
-                              disabled={status === "training"}
-                              className="bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded px-1.5 py-0.5 w-20 focus:outline-none focus:border-primary"
-                            />
-                          </div>
-                        )}
-
-                        {rule.type === "state_threshold" && (
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-on-surface-variant">
-                                StateIdx:
-                              </span>
-                              <input
-                                type="number"
-                                value={rule.index ?? 0}
-                                onChange={(e) =>
-                                  updateRuleField(
-                                    rule.id,
-                                    "index",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                disabled={status === "training"}
-                                className="bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded px-1 py-0.5 w-12 focus:outline-none focus:border-primary"
-                              />
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-on-surface-variant">
-                                Op:
-                              </span>
-                              <select
-                                value={rule.op ?? ">"}
-                                onChange={(e) =>
-                                  updateRuleField(rule.id, "op", e.target.value)
-                                }
-                                disabled={status === "training"}
-                                className="bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded px-1 w-14 focus:outline-none focus:border-primary"
-                              >
-                                <option value=">">&gt;</option>
-                                <option value="<">&lt;</option>
-                                <option value=">=">&gt;=</option>
-                                <option value="<=">&lt;=</option>
-                                <option value="==">==</option>
-                                <option value="!=">!=</option>
-                              </select>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-on-surface-variant">
-                                Threshold:
-                              </span>
-                              <input
-                                type="number"
-                                step="0.1"
-                                value={rule.value ?? 0.0}
-                                onChange={(e) =>
-                                  updateRuleField(
-                                    rule.id,
-                                    "value",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                disabled={status === "training"}
-                                className="bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded px-1 py-0.5 w-16 focus:outline-none focus:border-primary"
-                              />
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-on-surface-variant">
-                                Reward:
-                              </span>
-                              <input
-                                type="number"
-                                step="0.5"
-                                value={rule.reward ?? 1.0}
-                                onChange={(e) =>
-                                  updateRuleField(
-                                    rule.id,
-                                    "reward",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                disabled={status === "training"}
-                                className="bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded px-1 py-0.5 w-16 focus:outline-none focus:border-primary"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {rule.type === "action_bonus" && (
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-on-surface-variant">
-                                Action:
-                              </span>
-                              <input
-                                type="number"
-                                value={rule.action ?? 0}
-                                onChange={(e) =>
-                                  updateRuleField(
-                                    rule.id,
-                                    "action",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                disabled={status === "training"}
-                                className="bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded px-1 py-0.5 w-12 focus:outline-none focus:border-primary"
-                              />
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-on-surface-variant">
-                                Reward:
-                              </span>
-                              <input
-                                type="number"
-                                step="0.5"
-                                value={rule.reward ?? 1.0}
-                                onChange={(e) =>
-                                  updateRuleField(
-                                    rule.id,
-                                    "reward",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                disabled={status === "training"}
-                                className="bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded px-1 py-0.5 w-16 focus:outline-none focus:border-primary"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {(rule.type === "terminal_bonus" ||
-                          rule.type === "terminal_penalty") && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-on-surface-variant">
-                                Bonus/Penalty Value:
-                              </span>
-                              <input
-                                type="number"
-                                step="1"
-                                value={rule.reward ?? 10.0}
-                                onChange={(e) =>
-                                  updateRuleField(
-                                    rule.id,
-                                    "reward",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                disabled={status === "training"}
-                                className="bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded px-1.5 py-0.5 w-20 focus:outline-none focus:border-primary"
-                              />
-                            </div>
-                          )}
-
-                        {rule.type === "override_reward" && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-on-surface-variant">
-                              Override Value:
-                            </span>
-                            <input
-                              type="number"
-                              step="0.5"
-                              value={rule.value ?? 1.0}
-                              onChange={(e) =>
-                                updateRuleField(
-                                  rule.id,
-                                  "value",
-                                  Number(e.target.value),
-                                )
-                              }
-                              disabled={status === "training"}
-                              className="bg-surface-container-low border border-outline-variant text-on-surface text-xs rounded px-1.5 py-0.5 w-20 focus:outline-none focus:border-primary"
-                            />
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => removeRewardRule(rule.id)}
-                        disabled={status === "training"}
-                        className="text-red-400 hover:text-red-300 disabled:opacity-50 p-1 hover:bg-white/5 rounded transition-colors"
-                      >
-                        <MdDelete className="text-lg" />
-                      </button>
-                    </div>
-                  ))
-                )}
               </div>
             </div>
           </div>
@@ -880,12 +580,12 @@ export default function RLTrainPage() {
                 <div className="flex items-center gap-2">
                   <span
                     className={`w-3 h-3 rounded-full ${status === "training"
-                        ? "bg-amber-400 animate-pulse"
-                        : status === "completed"
-                          ? "bg-green-400"
-                          : status === "failed"
-                            ? "bg-red-500"
-                            : "bg-gray-400"
+                      ? "bg-amber-400 animate-pulse"
+                      : status === "completed"
+                        ? "bg-green-400"
+                        : status === "failed"
+                          ? "bg-red-500"
+                          : "bg-gray-400"
                       }`}
                   />
                   <span className="text-sm font-bold capitalize">{status}</span>
@@ -916,7 +616,7 @@ export default function RLTrainPage() {
 
                 {status === "completed" && taskId && (
                   <a
-                    href={`http://localhost:8000/rl/download/${taskId}`}
+                    href={(process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000") + "/rl/download/" + taskId}
                     download
                     className="px-4 py-2 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40 border border-emerald-500/30 rounded-lg text-sm flex items-center gap-1.5 transition-colors font-medium"
                   >
@@ -1042,7 +742,7 @@ export default function RLTrainPage() {
                 {showSim ? (
                   <div className="flex flex-col items-center gap-2 bg-surface-container-low p-4 rounded-xl border border-outline-variant">
                     <img
-                      src={`http://localhost:8000/rl/test/stream/${taskId}?episodes=3&max_steps=500&t=${simCacheBuster}`}
+                      src={(process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000") + "/rl/test/stream/" + taskId + "?episodes=3&max_steps=500&t=" + simCacheBuster}
                       alt="Gym Environment Pygame Simulation"
                       className="rounded-lg max-w-full border border-outline-variant bg-slate-950"
                       style={{ height: "300px", width: "auto" }}

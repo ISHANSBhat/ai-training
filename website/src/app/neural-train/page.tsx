@@ -155,7 +155,7 @@ export default function NeuralTrainPage() {
       formData.append("train_file", trainFile);
       formData.append("test_file", testFile);
 
-      const response = await fetch("http://localhost:8000/neural-train", {
+      const response = await fetch(process.env.NEXT_PUBLIC_BACKEND_URL + "/neural-train" || "http://localhost:8000/neural-train", {
         method: "POST",
         body: formData,
       });
@@ -232,10 +232,10 @@ export default function NeuralTrainPage() {
   // Filter and Paginate predictions
   const filteredPredictions = results
     ? results.predictions.filter((row) =>
-        Object.values(row).some((val) =>
-          String(val).toLowerCase().includes(searchTerm.toLowerCase()),
-        ),
-      )
+      Object.values(row).some((val) =>
+        String(val).toLowerCase().includes(searchTerm.toLowerCase()),
+      ),
+    )
     : [];
 
   const totalPages = Math.ceil(filteredPredictions.length / itemsPerPage);
@@ -248,8 +248,8 @@ export default function NeuralTrainPage() {
   const tableKeys =
     results && results.predictions.length > 0
       ? Object.keys(results.predictions[0]).filter(
-          (k) => k !== "prediction" && k !== "confidence",
-        )
+        (k) => k !== "prediction" && k !== "confidence",
+      )
       : [];
 
   return (
@@ -636,7 +636,7 @@ export default function NeuralTrainPage() {
                         results.history.length - 1
                       ].train_loss.toFixed(4)}
                       {results.history[results.history.length - 1].val_loss !==
-                      null
+                        null
                         ? ` / ${results.history[results.history.length - 1].val_loss?.toFixed(4)}`
                         : " / --"}
                     </span>
@@ -649,7 +649,7 @@ export default function NeuralTrainPage() {
                     </span>
                     <span className="text-xl font-bold text-secondary">
                       {results.task === "classification" &&
-                      results.history[results.history.length - 1].val_acc !==
+                        results.history[results.history.length - 1].val_acc !==
                         null
                         ? `${(results.history[results.history.length - 1].val_acc! * 100).toFixed(1)}%`
                         : "N/A (Val is 0%)"}
@@ -810,14 +810,14 @@ export default function NeuralTrainPage() {
                             )}
                             <td className="px-md py-sm font-semibold text-primary-container bg-primary/5">
                               {typeof row.prediction === "number" &&
-                              results.task === "regression"
+                                results.task === "regression"
                                 ? row.prediction.toFixed(4)
                                 : String(row.prediction)}
                             </td>
                             {results.task === "classification" && (
                               <td className="px-md py-sm font-semibold text-secondary bg-secondary/5">
                                 {row.confidence !== null &&
-                                row.confidence !== undefined
+                                  row.confidence !== undefined
                                   ? `${(row.confidence * 100).toFixed(1)}%`
                                   : "--"}
                               </td>

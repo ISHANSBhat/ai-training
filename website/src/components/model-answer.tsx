@@ -77,7 +77,7 @@ export default function ModelAnswer({
         formData.append("file", file);
 
         // Send request to backend
-        const response = await fetch("http://localhost:8000/train", {
+        const response = await fetch(process.env.NEXT_PUBLIC_BACKEND_URL + "/train" || "http://localhost:8000/train", {
           method: "POST",
           body: formData,
         });
