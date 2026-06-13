@@ -23,28 +23,26 @@ export default function Navbar() {
           <h1
             className={`${geistSans.className} font-bold text-on-surface text-2xl`}
           >
-            AI Training
+            NeuroForge
           </h1>
         </Link>
       </div>
       <nav className="flex items-center gap-md">
         <Link
           href="/"
-          className={`text-sm font-medium transition-colors px-3 py-1.5 rounded-lg border ${
-            pathname === "/"
+          className={`text-sm font-medium transition-colors px-3 py-1.5 rounded-lg border ${pathname === "/"
               ? "text-primary bg-primary/10 border-primary/20"
               : "text-on-surface-variant hover:text-on-surface border-transparent"
-          }`}
+            }`}
         >
           Classical Models
         </Link>
         <Link
           href="/neural-train"
-          className={`text-sm font-medium transition-colors px-3 py-1.5 rounded-lg border ${
-            pathname === "/neural-train"
+          className={`text-sm font-medium transition-colors px-3 py-1.5 rounded-lg border ${pathname === "/neural-train"
               ? "text-primary bg-primary/10 border-primary/20"
               : "text-on-surface-variant hover:text-on-surface border-transparent"
-          }`}
+            }`}
         >
           Neural Network Trainer
         </Link>
