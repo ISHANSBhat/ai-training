@@ -85,7 +85,7 @@ Designed for students, researchers, and beginners, the platform abstracts the co
 2. Install dependencies if needed (from the backend folder):
 
 ```bash
-pip install -r requirements.txt
+pip install uv
 ```
 
 3. Sync dependencies with `uv`:
